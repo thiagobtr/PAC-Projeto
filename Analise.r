@@ -186,7 +186,8 @@ sprintf('media %f ',mean(valor))
 medidas<-function(valor){
   tibble('media'=mean(valor),
          'mediana'= median(valor),
-         'sd'= sd(valor))
+         'sd'= sd(valor),
+         'IQR'=IQR(valor))
   }
 
 #Funcao Moda
@@ -197,7 +198,9 @@ moda <- function(valor){
 #executa função
 medidas(pac_total_valor$investimento_total)
 ## O valor da média está muito distante da mediana, indicando que 
-## este valor esta sendo influenciado por outliers
+## este valor esta sendo influenciado por outliers.
+## Neste dataset a amplitude dos valores é muito grande, o que acaba
+## influenciando nessa diferença
 #moda
 moda(pac_total_valor$investimento_total)
 
@@ -245,10 +248,11 @@ pac_tipos<- pac_zscore%>%group_by(tipo)%>%
   arrange(cv,desvio)
 
 #Obeservando os valores, os tipos de obras com menor variabilidade são:
-# 1-Centro de Iniciação ao Esporte
-# 2-Educação
-# 3-Centro de Artes e Esportes Unificados
-# 4-Creches e Pré Escolas
+# 1-Estradas Vicinais
+# 2-Centro de Iniciação ao Esporte
+# 3-Educação
+# 4-Centro de Artes e Esportes Unificados
+# 5-Creches e Pré Escolas
 
 # Adicionando UF
 
