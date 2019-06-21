@@ -29,14 +29,27 @@ setwd('/media/sf_FormacaoCientistaDeDados/Portfolio/AnaliseBrasil')
 ## Arquivos Pac a partir de 2015
 arquivos_V2 <- list.files(path = 'Data/PAC/',pattern='*.csv',full.names = TRUE)
 
-### Arquivos Pac até 2014
+## Arquivos Pac até 2014
 arquivos_V1 <- list.files(path = 'Data/PAC/PAC2/',pattern='*.csv',full.names = TRUE)
 
 
 #Carregando os arquivos e gerando um dataframe utilizando ldply
-arq_V1 <- ldply(arquivos_V1, read_csv2,col_names=TRUE ,locale=locale(encoding = 'Latin1'))
+arq_V1 <- ldply(arquivos_V1, read_csv2,col_names=TRUE ,locale=locale(encoding = 'Latin1'),
+                col_types = cols(
+                  val_2011_2014 = col_character(),
+                  val_pos_2014 = col_character(),
+                  investimento_total = col_character()
+                )
+                )
 
-arq_V2 <- ldply(arquivos_V2, read_csv,col_names=TRUE ,locale=locale(encoding = 'Latin1'))
+arq_V2 <- ldply(arquivos_V2, read_csv,col_names=TRUE ,locale=locale(encoding = 'Latin1'),
+                col_types = cols(
+                  investimento_total = col_character()
+                  )
+                )
+
+str(arq_V1)
+str(arq_V2)
 
 #### read.csv base package
 # arq_V1 <- ldply(arquivos_V1, read.csv,header=TRUE,sep=';',fileEncoding='latin1'
@@ -47,7 +60,7 @@ arq_V2 <- ldply(arquivos_V2, read_csv,col_names=TRUE ,locale=locale(encoding = '
 
 
 #Importacao arquivo de Siglas e estados
-sigla_uf<- data.frame(read.csv('Data/Estados_Siglas.txt',header=TRUE,sep = '\t',
+sigla_uf <- data.frame(read.csv('Data/Estados_Siglas.txt',header=TRUE,sep = '\t',
                                stringsAsFactors = FALSE))
 
 #Dados de saneamento
@@ -73,7 +86,7 @@ col_names <- colnames(arq_V2)
 names(arq_V1) <- col_names
 
 #Uniao dos dataframes
-pac_total<- rbind(arq_V2,arq_V1)
+pac_total <- rbind(arq_V2,arq_V1)
 
 
 #Exclui df arq_V1 e arq_V2 
@@ -81,7 +94,8 @@ remove(arq_V1)
 remove(arq_V2)
 
 ##########
-#Conversao para formato data com readr::parse_date 
+# Conversao para formato data com readr::parse_date 
+## Criar loop para conversao de tipo
 pac_total$data_ciclo = parse_date(pac_total$dat_ciclo,"%d/%m/%Y") 
 pac_total$data_conclusao = parse_date(pac_total$dat_conclusao_revisada,"%d/%m/%Y") 
 pac_total$data_selecao = parse_date(pac_total$dat_selecao,"%d/%m/%Y") 
@@ -98,15 +112,15 @@ pac_total$dat_selecao = NULL
 
 
 # Replace nao digito por ""
-pac_total$lat<-str_replace_all(pac_total$obra_latitude,"\\D","")
-pac_total$lon<-str_replace_all(pac_total$obra_longitude,"\\D","")
+pac_total$lat <- str_replace_all(pac_total$obra_latitude,"\\D","")
+pac_total$lon <- str_replace_all(pac_total$obra_longitude,"\\D","")
 
 # Substitui os valores de "em revisao" por 0
-pac_total$investimento_total<-str_replace_all(pac_total$investimento_total,"em revisão","0")
+pac_total$investimento_total <- str_replace_all(pac_total$investimento_total,"em revisão","0")
 
 
 # outra forma para remover colunas
-pac_total<- select(pac_total,-c(obra_latitude,obra_longitude))
+pac_total <- select(pac_total,-c(obra_latitude,obra_longitude))
 
 #conversao para tibble
 pac_total <- as_tibble(pac_total)
@@ -122,13 +136,37 @@ detach(package:plyr)
 pac_total_distinct <- pac_total%>%
   group_by(idn_empreendimento)%>%
   summarise(max_data =  max(data_ciclo,na.rm=TRUE),
-            min_data =  min(data_ciclo,na.rm=TRUE),
-            min_valor = min(investimento_total,na.rm=TRUE),
-            max_valor = max(investimento_total,na.rm=TRUE))
+            min_data =  min(data_ciclo,na.rm=TRUE))
 
 # Seleciona os registros mais atualizados
-pac_total_V3 <- pac_total%>%
+pac_total_max_data <- pac_total%>%
   inner_join(pac_total_distinct,by = c('idn_empreendimento', 'data_ciclo' = 'max_data' ))
+
+pac_total_min_data <- pac_total%>%
+  inner_join(pac_total_distinct,by = c('idn_empreendimento', 'data_ciclo' = 'min_data' ))
+
+pac_total_V3 <- pac_total_max_data %>%
+  inner_join(select(pac_total_min_data,idn_empreendimento,investimento_total),
+             by= c('idn_empreendimento')) %>%
+  rename(investimento_total = investimento_total.x,
+         investimento_total_min = investimento_total.y)
+  
+
+
+View(pac_total_V3 %>%
+  filter (idn_empreendimento== 30358))
+
+# Converte campos para tipo double
+pac_total_V3$investimento_total <- parse_double(pac_total_V3$investimento_total,
+                                                na =c("","NA"),
+                                locale = locale(decimal_mark = "."))
+
+pac_total_V3$investimento_total_min <- parse_double(pac_total_V3$investimento_total_min,
+                                                    na =c("","NA"),
+                                   locale = locale(decimal_mark = "."))
+
+
+str(pac_total_V3)
 
 # Remove pac_distinct
 #remove(pac_total_V3)  
@@ -177,7 +215,7 @@ pac_total_V3 <- pac_total_V3%>%filter(Qtd_uf==1)%>%
   inner_join(sigla_uf,by=c("sig_uf"="SIGLA"))
 
 # Cria variavel Regiao
-pac_total_V3<- pac_total_V3%>%
+pac_total_V3 <- pac_total_V3%>%
   mutate(
     Regiao=case_when(
       sig_uf %in% c('RS','PR','SC')~'Sul',
@@ -190,20 +228,26 @@ pac_total_V3<- pac_total_V3%>%
 table(pac_total_V3$subeixo)
 table(pac_total_V3$tipo)
 
-# Converte variavel para tipo numerico
-pac_total_V3$investimento_total = parse_double(pac_total_V3$investimento_total)
+# verifica qtd valores nulos
+pac_total_V3%>% filter(is.na(investimento_total))%>%
+  count(observacao)
 
 library('tidyr') #replace_na
-
+# Atualiza valores nulos
+pac_total_V3$investimento_total <- replace_na(pac_total_V3$investimento_total,0)
+pac_total_V3$investimento_total_min <- replace_na(pac_total_V3$investimento_total_min,0)
 
 # selecionado o valor medio por tipo 
-pac_media <- pac_total_V3%>%
+pac_media <- 
+  pac_total_V3%>%
+  filter(investimento_total > 0)%>%
   group_by(tipo)%>%
   summarise(media = mean(investimento_total,na.rm = TRUE),qtd=n())%>%
-  mutate(media = replace_na (media,0))%>%
+  #mutate(media = replace_na (media,0))%>%
   select(tipo,media)
 
-detach(package:tidyr)
+
+# detach(package:tidyr)
 
 
 # Atribui valor da media 
@@ -211,8 +255,8 @@ pac_total_V3 <- pac_total_V3%>%
   inner_join(pac_media,by = "tipo")
 
 # Atualiza registros sem valores 
-pac_total_V3$investimento_total <- ifelse(is.na(pac_total_V3$investimento_total),
-                                          pac_total_V3$media ,pac_total_V3$investimento_total)
+# pac_total_V3$investimento_total <- ifelse(is.na(pac_total_V3$investimento_total),
+#                                          pac_total_V3$media ,pac_total_V3$investimento_total)
 
 
 #remove variaveis
@@ -223,10 +267,11 @@ pac_total_V3$Qtd_uf=NULL
 
 
 # Calculando zscore por grupo tipo
-pac_zscore <- pac_total_V3 %>% group_by(tipo)%>%
+pac_zscore <- pac_total_V3 %>% 
+  filter(investimento_total > 0)%>%
+  group_by(tipo)%>%
   mutate(zscore_tipo = scale(investimento_total),qtd=n())%>%
-  ungroup %>% 
-  mutate(z_score_ungrouped = scale(investimento_total))
+  ungroup 
 
 # Calcula zscore por Tipo e UF  
 pac_zscore <- pac_zscore %>% group_by(sig_uf,tipo)%>%
@@ -257,20 +302,20 @@ class(pac_total)
 sprintf('media %f ',mean(valor))
 
 #Função para media mediana e desvio padrao
-medidas<-function(valor){
-  tibble('media'=mean(valor),
-         'mediana'= median(valor),
-         'sd'= sd(valor),
-         'IQR'=IQR(valor))
+medidas <- function(valor, x){
+  tibble('media'=mean(valor,na.rm = x),
+         'mediana'= median(valor,na.rm = x),
+         'sd'= sd(valor,na.rm = x),
+         'IQR'=IQR(valor,na.rm = x))
   }
 
 #Funcao Moda
 moda <- function(valor){
-  calc<- table(valor)
+  calc <- table(valor)
   names(calc) [calc == max(calc)]
 }
 #executa função
-medidas(pac_zscore$investimento_total)
+medidas(pac_zscore$investimento_total,TRUE)
 ## O valor da média está muito distante da mediana, indicando que 
 ## este valor esta sendo influenciado por outliers.
 ## Neste dataset a amplitude dos valores é muito grande, o que acaba
@@ -294,17 +339,24 @@ quantile(pac_total_valor$investimento_total,0.25)
 #sd ajuda a verificar se os dados são mais parecidos
 
 #cv ajuda a comparar a variabilidade entre datasets
-
+detach(package:plyr)
 #agrupando dateset por tipo de obra e calculando media, desvio, mediana e cv
-pac_tipos <- pac_zscore%>%filter(investimento_total>0)%>%
+pac_tipos <- pac_zscore%>%
+  filter(investimento_total > 0)%>%
   group_by(tipo)%>%
-#  select(titulo :z_score_ungrouped)%>%
-  mutate(n=n(),
+  select(tipo,investimento_total)%>%
+  summarise(qtd = n(),
             media = mean(investimento_total),
             desvio = sd(investimento_total),
-            mediana = median(investimento_total))%>%
+            mediana = median(investimento_total),
+            valor_max = max(investimento_total),
+            valor_min = min(investimento_total))%>%
             mutate(cv = (desvio / media) *100)%>%
   arrange(cv,desvio)
+
+# Salvando arquivo
+write_csv(pac_tipos,'Pac_tipos.csv')
+write_csv(pac_zscore,'Pac_norm.csv')
 
 # Atualizando variaveis sem valor de investimento com a media por tipo de obra
 
